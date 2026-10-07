@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # ============================================================
-# TexLiveDocker Compiler - Linux/macOS
+# TeXLiveDocker Compiler - Linux/macOS
 # ============================================================
 
 IMAGE="tex-live-docker"
@@ -16,7 +16,7 @@ mkdir -p input output build failed
 clear
 
 echo "========================================"
-echo "      TexLiveDocker Compiler"
+echo "      TeXLiveDocker Compiler"
 echo "========================================"
 echo
 
@@ -44,7 +44,7 @@ create_error_log() {
     ERRORFILE="failed/$BUILD_NAME-errors.txt"
 
     {
-        echo "TexLiveDocker Compiler - Error Report"
+        echo "TeXLiveDocker Compiler - Error Report"
         echo "================================="
         echo
         echo "Project: $BUILD_NAME"

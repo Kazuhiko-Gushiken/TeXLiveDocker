@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 REM ============================================================
-REM TexLiveDocker - Windows
+REM TeXLiveDocker - Windows
 REM ============================================================
 
 REM Always operate relative to this script.
@@ -19,7 +19,7 @@ if not exist "failed" mkdir "failed"
 
 cls
 echo ========================================
-echo       TexLiveDocker Compiler
+echo       TeXLiveDocker Compiler
 echo ========================================
 echo.
 
@@ -371,7 +371,7 @@ set "ERRORFILE=failed\!BUILD_NAME!-errors.txt"
 
 REM Create report header.
 (
-    echo TexLiveDocker Compiler - Error Report
+    echo TeXLiveDocker Compiler - Error Report
     echo =================================
     echo.
     echo Project: !BUILD_NAME!
