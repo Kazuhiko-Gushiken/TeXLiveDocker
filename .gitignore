@@ -1,0 +1,32 @@
+# Generated compiler directories
+build/*
+output/*
+failed/*
+
+# Keep empty directories in Git
+!build/.gitkeep
+!output/.gitkeep
+!failed/.gitkeep
+
+# User input
+input/*
+!input/.gitkeep
+
+# LaTeX junk
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+
+# Gnuplot generated files
+*.gnuplot
+*.table
+
+# OS junk
+.DS_Store
+Thumbs.db
