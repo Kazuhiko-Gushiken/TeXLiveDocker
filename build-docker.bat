@@ -1,9 +1,7 @@
 @echo off
 setlocal
 
-REM ============================================================
-REM TeX Live Docker - Image Builder
-REM ============================================================
+REM image builder
 
 cd /d "%~dp0"
 
@@ -15,7 +13,7 @@ echo       TeX Live Docker - Setup
 echo ========================================
 echo.
 
-REM Check Docker.
+REM check for docker actually running
 docker info >nul 2>&1
 
 if errorlevel 1 (
@@ -26,7 +24,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Check Dockerfile.
+REM now check the docker file
 if not exist "Dockerfile" (
     echo ERROR: Dockerfile not found.
     echo.

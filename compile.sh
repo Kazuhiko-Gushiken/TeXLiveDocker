@@ -1,28 +1,18 @@
 #!/bin/sh
 
-# ============================================================
-# TeXLiveDocker Compiler - Linux/macOS
-# ============================================================
+# compiler
 
 IMAGE="tex-live-docker"
-
-# Always operate relative to this script.
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
-# Create required directories.
 mkdir -p input output build failed
-
 clear
 
 echo "========================================"
 echo "      TeXLiveDocker Compiler"
 echo "========================================"
 echo
-
-# ============================================================
-# Check Docker
-# ============================================================
 
 if ! docker info >/dev/null 2>&1; then
     echo "ERROR: Docker is not running or is not accessible."
@@ -31,23 +21,22 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-# ============================================================
-# Create simplified error report
-# ============================================================
-
 create_error_log() {
+    BUILD_DIR="$1"
+    NAME="$2"
+    ERROR_DIR="$3"
+    DISPLAY="$4"
 
-    BUILD_NAME="$1"
-    LOG_NAME="$2"
+    LOGFILE="$BUILD_DIR/$NAME.log"
+    ERRORFILE="$ERROR_DIR/$NAME-errors.txt"
 
-    LOGFILE="build/$BUILD_NAME/$LOG_NAME.log"
-    ERRORFILE="failed/$BUILD_NAME-errors.txt"
+    mkdir -p "$ERROR_DIR"
 
     {
         echo "TeXLiveDocker Compiler - Error Report"
-        echo "================================="
+        echo "====================================="
         echo
-        echo "Project: $BUILD_NAME"
+        echo "Document: $DISPLAY"
         echo "Status: FAILED"
         echo
         echo "ERRORS"
@@ -56,30 +45,21 @@ create_error_log() {
     } > "$ERRORFILE"
 
     if [ -f "$LOGFILE" ]; then
-
-        # Actual TeX errors normally begin with !
         grep -n '^!' "$LOGFILE" >> "$ERRORFILE" 2>/dev/null || true
-
         {
             echo
             echo "SOURCE LINES"
             echo "------------"
             echo
         } >> "$ERRORFILE"
-
-        # Extract lines such as:
-        # l.42 \someBrokenCommand
         grep -n '^l\.[0-9][0-9]*' "$LOGFILE" >> "$ERRORFILE" 2>/dev/null || true
-
     else
-
         {
             echo "No LaTeX log file was generated."
             echo
             echo "The failure may have occurred before LaTeX"
             echo "was able to create a log file."
         } >> "$ERRORFILE"
-
     fi
 
     {
@@ -89,75 +69,70 @@ create_error_log() {
     } >> "$ERRORFILE"
 }
 
-# ============================================================
-# Compile a loose .tex file
-# ============================================================
+run_latex() {
+    BUILD_DIR="$1"
+    FILE="$2"
+    NAME="$3"
+    ERROR_DIR="$4"
+    DISPLAY="$5"
 
-compile_file() {
+    mkdir -p "$ERROR_DIR"
 
+    if ! docker run --rm \
+        -v "$SCRIPT_DIR/$BUILD_DIR:/work" \
+        -w /work \
+        "$IMAGE" \
+        latexmk -pdf -shell-escape "$FILE"
+    then
+        echo
+        echo "[FAILED] $DISPLAY"
+        create_error_log "$BUILD_DIR" "$NAME" "$ERROR_DIR" "$DISPLAY"
+        echo
+        echo "Error report:"
+        echo "  $ERROR_DIR/$NAME-errors.txt"
+        echo
+        echo "Full build files:"
+        echo "  $BUILD_DIR"
+        echo
+        return 1
+    fi
+
+    if [ ! -f "$BUILD_DIR/$NAME.pdf" ]; then
+        echo
+        echo "[FAILED] $DISPLAY - expected PDF was not created."
+        create_error_log "$BUILD_DIR" "$NAME" "$ERROR_DIR" "$DISPLAY"
+        echo
+        echo "Error report:"
+        echo "  $ERROR_DIR/$NAME-errors.txt"
+        echo
+        return 1
+    fi
+
+    return 0
+}
+
+compile_loose_file() {
     SOURCE="$1"
     FILE="$(basename "$SOURCE")"
     NAME="${FILE%.tex}"
+    BUILD_DIR="build/$NAME"
 
     echo "========================================"
     echo "Compiling: $FILE"
     echo "========================================"
     echo
 
-    # Delete previous build.
-    rm -rf "build/$NAME"
-    mkdir -p "build/$NAME"
+    rm -rf "$BUILD_DIR"
+    mkdir -p "$BUILD_DIR"
+    cp "$SOURCE" "$BUILD_DIR/$FILE"
 
-    # Copy source into build directory.
-    cp "$SOURCE" "build/$NAME/$FILE"
-
-    # Compile inside Docker.
-    if ! docker run --rm \
-        -v "$SCRIPT_DIR/build/$NAME:/work" \
-        -w /work \
-        "$IMAGE" \
-        latexmk -pdf -shell-escape "$FILE"
-    then
-
-        echo
-        echo "[FAILED] $FILE"
-
-        create_error_log "$NAME" "$NAME"
-
-        echo
-        echo "Error report:"
-        echo "  failed/$NAME-errors.txt"
-        echo
-        echo "Full build files:"
-        echo "  build/$NAME"
-        echo
-
+    if ! run_latex "$BUILD_DIR" "$FILE" "$NAME" "failed" "$FILE"; then
         return
     fi
 
-    # Make sure PDF actually exists.
-    if [ ! -f "build/$NAME/$NAME.pdf" ]; then
-
-        echo
-        echo "[FAILED] Expected PDF was not created."
-
-        create_error_log "$NAME" "$NAME"
-
-        echo
-        echo "Error report:"
-        echo "  failed/$NAME-errors.txt"
-        echo
-
-        return
-    fi
-
-    # Delete obsolete failure report.
-    rm -f "failed/$NAME-errors.txt"
-
-    # Copy source and PDF to output.
-    # Original input remains untouched.
     cp "$SOURCE" "output/$FILE"
-    cp "build/$NAME/$NAME.pdf" "output/$NAME.pdf"
+    cp "$BUILD_DIR/$NAME.pdf" "output/$NAME.pdf"
+    rm -f "failed/$NAME-errors.txt"
 
     echo
     echo "[SUCCESS] $FILE"
@@ -165,136 +140,83 @@ compile_file() {
     echo
 }
 
-# ============================================================
-# Compile a project directory
-# ============================================================
+compile_directory_file() {
+    SOURCE_DIR="$1"
+    PROJECT="$2"
+    SOURCE_FILE="$3"
+    FILE="$(basename "$SOURCE_FILE")"
+    NAME="${FILE%.tex}"
+    BUILD_DIR="build/$PROJECT/$NAME"
+    ERROR_DIR="failed/$PROJECT"
 
-compile_project() {
+    echo "----------------------------------------"
+    echo "Compiling: $PROJECT/$FILE"
+    echo "----------------------------------------"
+    echo
 
+    rm -rf "$BUILD_DIR"
+    mkdir -p "$BUILD_DIR"
+
+    # Copy the whole source directory so this document can still access
+    # sibling images, bibliography files, data files, etc.
+    cp -R "$SOURCE_DIR"/. "$BUILD_DIR/"
+
+    if ! run_latex "$BUILD_DIR" "$FILE" "$NAME" "$ERROR_DIR" "$PROJECT/$FILE"; then
+        return
+    fi
+
+    cp "$BUILD_DIR/$NAME.pdf" "output/$PROJECT/$NAME.pdf"
+    rm -f "$ERROR_DIR/$NAME-errors.txt"
+    rmdir "$ERROR_DIR" 2>/dev/null || true
+
+    echo
+    echo "[SUCCESS] $FILE"
+    echo
+}
+
+compile_directory() {
     SOURCE_DIR="$1"
     PROJECT="$(basename "$SOURCE_DIR")"
-    MAIN="$PROJECT.tex"
+    FOUND_TEX=0
 
     echo "========================================"
-    echo "Compiling: $PROJECT"
+    echo "Compiling directory: $PROJECT"
     echo "========================================"
     echo
 
-    # --------------------------------------------------------
-    # Check main file
-    # --------------------------------------------------------
-    #
-    # Project convention:
-    #
-    # input/PhysicsLab/
-    #     PhysicsLab.tex
-    #     image.png
-    #     data.csv
-    #
-    # Folder name must match main .tex filename.
+    for FILE in "$SOURCE_DIR"/*.tex; do
+        if [ -f "$FILE" ]; then
+            FOUND_TEX=1
+            break
+        fi
+    done
 
-    if [ ! -f "$SOURCE_DIR/$MAIN" ]; then
-
-        echo "[FAILED] Main TeX file not found."
+    if [ "$FOUND_TEX" -eq 0 ]; then
+        echo "[SKIPPED] No .tex files found directly inside $SOURCE_DIR"
         echo
-        echo "Expected:"
-        echo "  $SOURCE_DIR/$MAIN"
-        echo
-        echo "Project directories must contain a .tex file"
-        echo "with the same name as the directory."
-        echo
-
         return
     fi
 
-    # --------------------------------------------------------
-    # Prepare build directory
-    # --------------------------------------------------------
-
-    rm -rf "build/$PROJECT"
-    mkdir -p "build/$PROJECT"
-
-    # Copy entire project, including hidden files.
-    cp -R "$SOURCE_DIR"/. "build/$PROJECT/"
-
-    # --------------------------------------------------------
-    # Compile
-    # --------------------------------------------------------
-
-    if ! docker run --rm \
-        -v "$SCRIPT_DIR/build/$PROJECT:/work" \
-        -w /work \
-        "$IMAGE" \
-        latexmk -pdf -shell-escape "$MAIN"
-    then
-
-        echo
-        echo "[FAILED] $PROJECT"
-
-        create_error_log "$PROJECT" "$PROJECT"
-
-        echo
-        echo "Error report:"
-        echo "  failed/$PROJECT-errors.txt"
-        echo
-        echo "Full build files:"
-        echo "  build/$PROJECT"
-        echo
-
-        return
-    fi
-
-    # Make sure PDF actually exists.
-    if [ ! -f "build/$PROJECT/$PROJECT.pdf" ]; then
-
-        echo
-        echo "[FAILED] Expected PDF was not created."
-
-        create_error_log "$PROJECT" "$PROJECT"
-
-        echo
-        echo "Error report:"
-        echo "  failed/$PROJECT-errors.txt"
-        echo
-
-        return
-    fi
-
-    # --------------------------------------------------------
-    # Compilation succeeded
-    # --------------------------------------------------------
-
-    # Delete obsolete failure report.
-    rm -f "failed/$PROJECT-errors.txt"
-
-    # Remove previous output version.
+    # make an output copy of the source then pdf
     rm -rf "output/$PROJECT"
     mkdir -p "output/$PROJECT"
-
-    # Copy ORIGINAL project to output.
     cp -R "$SOURCE_DIR"/. "output/$PROJECT/"
 
-    # Add newly compiled PDF.
-    cp \
-        "build/$PROJECT/$PROJECT.pdf" \
-        "output/$PROJECT/$PROJECT.pdf"
+    for FILE in "$SOURCE_DIR"/*.tex; do
+        if [ -f "$FILE" ]; then
+            compile_directory_file "$SOURCE_DIR" "$PROJECT" "$FILE"
+        fi
+    done
 
-    echo
-    echo "[SUCCESS] $PROJECT"
+    echo "Finished directory: $PROJECT"
     echo "Output: output/$PROJECT"
     echo
 }
 
-# ============================================================
-# Display available input
-# ============================================================
-
 echo "Available:"
 echo
-
 FOUND=0
 
-# Show loose .tex files.
 for FILE in input/*.tex; do
     if [ -f "$FILE" ]; then
         echo "  $(basename "$FILE")"
@@ -302,7 +224,6 @@ for FILE in input/*.tex; do
     fi
 done
 
-# Show project directories.
 for DIR in input/*; do
     if [ -d "$DIR" ]; then
         echo "  $(basename "$DIR")"
@@ -321,67 +242,36 @@ fi
 echo
 echo "----------------------------------------"
 echo
-echo "Enter a file or project name to compile it."
+echo "Enter a file or directory name to compile it."
+echo "Selecting a directory compiles every .tex file directly inside it."
 echo "Press ENTER to compile EVERYTHING."
 echo
-
 printf "Selection: "
 IFS= read -r SELECTION
-
 echo
 
-# ============================================================
-# Compile everything
-# ============================================================
-
 if [ -z "$SELECTION" ]; then
-
-    # Compile loose .tex files.
     for FILE in input/*.tex; do
         if [ -f "$FILE" ]; then
-            compile_file "$FILE"
+            compile_loose_file "$FILE"
         fi
     done
 
-    # Compile project directories.
     for DIR in input/*; do
         if [ -d "$DIR" ]; then
-            compile_project "$DIR"
+            compile_directory "$DIR"
         fi
     done
-
-# ============================================================
-# Compile a specific project
-# ============================================================
-
 elif [ -d "input/$SELECTION" ]; then
-
-    compile_project "input/$SELECTION"
-
-# ============================================================
-# Compile a specific loose file
-# ============================================================
-
-elif [ -f "input/$SELECTION" ] && \
-     [ "${SELECTION##*.}" = "tex" ]; then
-
-    compile_file "input/$SELECTION"
-
-# Allow omission of .tex extension.
+    compile_directory "input/$SELECTION"
+elif [ -f "input/$SELECTION" ] && [ "${SELECTION##*.}" = "tex" ]; then
+    compile_loose_file "input/$SELECTION"
 elif [ -f "input/$SELECTION.tex" ]; then
-
-    compile_file "input/$SELECTION.tex"
-
+    compile_loose_file "input/$SELECTION.tex"
 else
-
     echo "ERROR: \"$SELECTION\" was not found in input."
     echo
-
 fi
-
-# ============================================================
-# Finished
-# ============================================================
 
 echo
 echo "========================================"

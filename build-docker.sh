@@ -1,8 +1,6 @@
 #!/bin/sh
 
-# ============================================================
-# TeX Live Docker - Image Builder
-# ============================================================
+# image builder
 
 IMAGE="tex-live-docker"
 
@@ -16,7 +14,7 @@ echo "      TeX Live Docker - Setup"
 echo "========================================"
 echo
 
-# Check Docker.
+# check for docker actually running
 if ! docker info >/dev/null 2>&1; then
     echo "ERROR: Docker is not running or is not accessible."
     echo "Please start Docker and try again."
@@ -24,7 +22,7 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
-# Check Dockerfile.
+# now check the docker file
 if [ ! -f "Dockerfile" ]; then
     echo "ERROR: Dockerfile not found."
     echo

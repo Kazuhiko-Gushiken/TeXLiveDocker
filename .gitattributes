@@ -1,14 +1,14 @@
-# Windows batch scripts
+# windows batch scripts
 *.bat text eol=crlf
 *.cmd text eol=crlf
 
-# Unix shell scripts
+# unix shell scripts
 *.sh text eol=lf
 
-# Docker
+# le docker
 Dockerfile text eol=lf
 
-# General text files
+# text files
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf

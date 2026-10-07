@@ -1,17 +1,11 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-REM ============================================================
-REM TeXLiveDocker - Windows
-REM ============================================================
+REM compiler
 
-REM Always operate relative to this script.
 cd /d "%~dp0"
-
-REM Docker image.
 set "IMAGE=tex-live-docker"
 
-REM Create required directories.
 if not exist "input" mkdir "input"
 if not exist "output" mkdir "output"
 if not exist "build" mkdir "build"
@@ -23,12 +17,7 @@ echo       TeXLiveDocker Compiler
 echo ========================================
 echo.
 
-REM ============================================================
-REM Check Docker
-REM ============================================================
-
 docker info >nul 2>&1
-
 if errorlevel 1 (
     echo ERROR: Docker is not running.
     echo Please start Docker Desktop and try again.
@@ -37,16 +26,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM ============================================================
-REM Display available input
-REM ============================================================
-
 echo Available:
 echo.
-
 set "FOUND=0"
 
-REM Show loose .tex files.
 for %%F in ("input\*.tex") do (
     if exist "%%F" (
         echo   %%~nxF
@@ -54,7 +37,6 @@ for %%F in ("input\*.tex") do (
     )
 )
 
-REM Show project directories.
 for /d %%D in ("input\*") do (
     echo   %%~nxD
     set "FOUND=1"
@@ -72,56 +54,35 @@ if "!FOUND!"=="0" (
 echo.
 echo ----------------------------------------
 echo.
-echo Enter a file or project name to compile it.
+echo Enter a file or directory name to compile it.
+echo Selecting a directory compiles every .tex file directly inside it.
 echo Press ENTER to compile EVERYTHING.
 echo.
-
 set /p "SELECTION=Selection: "
-
 echo.
 
-REM ============================================================
-REM Compile everything
-REM ============================================================
-
 if "%SELECTION%"=="" (
-
-    REM Compile loose .tex files.
     for %%F in ("input\*.tex") do (
-        if exist "%%F" (
-            call :CompileFile "%%F"
-        )
+        if exist "%%F" call :CompileLooseFile "%%F"
     )
-
-    REM Compile project directories.
-    for /d %%D in ("input\*") do (
-        call :CompileProject "%%D"
-    )
-
+    for /d %%D in ("input\*") do call :CompileDirectory "%%D"
     goto Finished
 )
 
-REM ============================================================
-REM Compile a specific selection
-REM ============================================================
-
-REM Project directory.
 if exist "input\%SELECTION%\" (
-    call :CompileProject "input\%SELECTION%"
+    call :CompileDirectory "input\%SELECTION%"
     goto Finished
 )
 
-REM Exact .tex filename.
 if exist "input\%SELECTION%" (
     if /i "%~xSELECTION%"==".tex" (
-        call :CompileFile "input\%SELECTION%"
+        call :CompileLooseFile "input\%SELECTION%"
         goto Finished
     )
 )
 
-REM Allow omission of .tex extension.
 if exist "input\%SELECTION%.tex" (
-    call :CompileFile "input\%SELECTION%.tex"
+    call :CompileLooseFile "input\%SELECTION%.tex"
     goto Finished
 )
 
@@ -130,251 +91,177 @@ echo.
 goto Finished
 
 
-REM ============================================================
-REM Compile a loose .tex file
-REM ============================================================
-
-:CompileFile
+REM compiling the .tex from input
+:CompileLooseFile
 
 set "SOURCE=%~1"
 set "FILE=%~nx1"
 set "NAME=%~n1"
+set "BUILD_DIR=build\!NAME!"
+set "OUTPUT_DIR=output"
+set "ERROR_DIR=failed"
 
 echo ========================================
 echo Compiling: !FILE!
 echo ========================================
 echo.
 
-REM Delete previous build.
-if exist "build\!NAME!" (
-    rmdir /s /q "build\!NAME!"
-)
+if exist "!BUILD_DIR!" rmdir /s /q "!BUILD_DIR!"
+mkdir "!BUILD_DIR!"
+copy /y "!SOURCE!" "!BUILD_DIR!\!FILE!" >nul
 
-mkdir "build\!NAME!"
+call :RunLatex "!BUILD_DIR!" "!FILE!" "!NAME!" "!ERROR_DIR!" "!NAME!"
+if errorlevel 1 goto :eof
 
-REM Copy source into build directory.
-copy /y "!SOURCE!" "build\!NAME!\!FILE!" >nul
+copy /y "!SOURCE!" "!OUTPUT_DIR!\!FILE!" >nul
+copy /y "!BUILD_DIR!\!NAME!.pdf" "!OUTPUT_DIR!\!NAME!.pdf" >nul
 
-REM Compile inside Docker.
-docker run --rm ^
-    -v "%~dp0build\!NAME!:/work" ^
-    -w /work ^
-    %IMAGE% ^
-    latexmk -pdf -shell-escape "!FILE!"
-
-REM ------------------------------------------------------------
-REM Compilation failed
-REM ------------------------------------------------------------
-
-if errorlevel 1 (
-
-    echo.
-    echo [FAILED] !FILE!
-
-    call :CreateErrorLog "!NAME!" "!NAME!"
-
-    echo.
-    echo Error report:
-    echo   failed\!NAME!-errors.txt
-    echo.
-    echo Full build files:
-    echo   build\!NAME!
-    echo.
-
-    goto :eof
-)
-
-REM Make sure PDF actually exists.
-if not exist "build\!NAME!\!NAME!.pdf" (
-
-    echo.
-    echo [FAILED] Expected PDF was not created.
-
-    call :CreateErrorLog "!NAME!" "!NAME!"
-
-    echo.
-    echo Error report:
-    echo   failed\!NAME!-errors.txt
-    echo.
-
-    goto :eof
-)
-
-REM ------------------------------------------------------------
-REM Compilation succeeded
-REM ------------------------------------------------------------
-
-REM Delete obsolete failure report.
-if exist "failed\!NAME!-errors.txt" (
-    del /q "failed\!NAME!-errors.txt"
-)
-
-REM Copy source and PDF to output.
-REM Original input remains untouched.
-copy /y "!SOURCE!" "output\!FILE!" >nul
-copy /y "build\!NAME!\!NAME!.pdf" "output\!NAME!.pdf" >nul
+if exist "!ERROR_DIR!\!NAME!-errors.txt" del /q "!ERROR_DIR!\!NAME!-errors.txt"
 
 echo.
 echo [SUCCESS] !FILE!
-echo Output: output
+echo Output: !OUTPUT_DIR!
 echo.
-
 goto :eof
 
 
-REM ============================================================
-REM Compile a project directory
-REM ============================================================
-
-:CompileProject
+REM compile all the tex from in the directory
+:CompileDirectory
 
 set "SOURCE_DIR=%~1"
 set "PROJECT=%~nx1"
-set "MAIN=!PROJECT!.tex"
+set "DIR_FOUND=0"
 
 echo ========================================
-echo Compiling: !PROJECT!
+echo Compiling directory: !PROJECT!
 echo ========================================
 echo.
 
-REM ------------------------------------------------------------
-REM Check main file
-REM ------------------------------------------------------------
+for %%F in ("!SOURCE_DIR!\*.tex") do (
+    if exist "%%F" set "DIR_FOUND=1"
+)
 
-REM Project convention:
-REM
-REM input\PhysicsLab\
-REM     PhysicsLab.tex
-REM     image.png
-REM     data.csv
-REM
-REM Folder name must match main .tex filename.
-
-if not exist "!SOURCE_DIR!\!MAIN!" (
-
-    echo [FAILED] Main TeX file not found.
+if "!DIR_FOUND!"=="0" (
+    echo [SKIPPED] No .tex files found directly inside !SOURCE_DIR!
     echo.
-    echo Expected:
-    echo   !SOURCE_DIR!\!MAIN!
-    echo.
-    echo Project directories must contain a .tex file
-    echo with the same name as the directory.
-    echo.
-
     goto :eof
 )
 
-REM ------------------------------------------------------------
-REM Prepare build directory
-REM ------------------------------------------------------------
-
-if exist "build\!PROJECT!" (
-    rmdir /s /q "build\!PROJECT!"
-)
-
-mkdir "build\!PROJECT!"
-
-REM Copy entire project into build.
-xcopy "!SOURCE_DIR!\*" "build\!PROJECT!\" /E /I /Q /Y >nul
-
-REM ------------------------------------------------------------
-REM Compile
-REM ------------------------------------------------------------
-
-docker run --rm ^
-    -v "%~dp0build\!PROJECT!:/work" ^
-    -w /work ^
-    %IMAGE% ^
-    latexmk -pdf -shell-escape "!MAIN!"
-
-REM ------------------------------------------------------------
-REM Compilation failed
-REM ------------------------------------------------------------
-
-if errorlevel 1 (
-
-    echo.
-    echo [FAILED] !PROJECT!
-
-    call :CreateErrorLog "!PROJECT!" "!PROJECT!"
-
-    echo.
-    echo Error report:
-    echo   failed\!PROJECT!-errors.txt
-    echo.
-    echo Full build files:
-    echo   build\!PROJECT!
-    echo.
-
-    goto :eof
-)
-
-REM Make sure PDF actually exists.
-if not exist "build\!PROJECT!\!PROJECT!.pdf" (
-
-    echo.
-    echo [FAILED] Expected PDF was not created.
-
-    call :CreateErrorLog "!PROJECT!" "!PROJECT!"
-
-    echo.
-    echo Error report:
-    echo   failed\!PROJECT!-errors.txt
-    echo.
-
-    goto :eof
-)
-
-REM ------------------------------------------------------------
-REM Compilation succeeded
-REM ------------------------------------------------------------
-
-REM Delete obsolete failure report.
-if exist "failed\!PROJECT!-errors.txt" (
-    del /q "failed\!PROJECT!-errors.txt"
-)
-
-REM Remove previous output version.
-if exist "output\!PROJECT!" (
-    rmdir /s /q "output\!PROJECT!"
-)
-
+REM make an output copy of the source
+if exist "output\!PROJECT!" rmdir /s /q "output\!PROJECT!"
 mkdir "output\!PROJECT!"
-
-REM Copy ORIGINAL project to output.
 xcopy "!SOURCE_DIR!\*" "output\!PROJECT!\" /E /I /Q /Y >nul
 
-REM Add newly compiled PDF.
-copy /y ^
-    "build\!PROJECT!\!PROJECT!.pdf" ^
-    "output\!PROJECT!\!PROJECT!.pdf" >nul
+REM keeping documents isolated
+for %%F in ("!SOURCE_DIR!\*.tex") do (
+    if exist "%%F" call :CompileDirectoryFile "!SOURCE_DIR!" "!PROJECT!" "%%~nxF"
+)
 
-echo.
-echo [SUCCESS] !PROJECT!
+echo Finished directory: !PROJECT!
 echo Output: output\!PROJECT!
 echo.
-
 goto :eof
 
 
-REM ============================================================
-REM Create simplified error report
-REM ============================================================
+REM compile the tex file
+:CompileDirectoryFile
 
+set "SOURCE_DIR=%~1"
+set "PROJECT=%~2"
+set "FILE=%~3"
+set "NAME=%~n3"
+set "BUILD_DIR=build\!PROJECT!\!NAME!"
+set "ERROR_DIR=failed\!PROJECT!"
+
+echo ----------------------------------------
+echo Compiling: !PROJECT!\!FILE!
+echo ----------------------------------------
+echo.
+
+if exist "!BUILD_DIR!" rmdir /s /q "!BUILD_DIR!"
+mkdir "!BUILD_DIR!"
+xcopy "!SOURCE_DIR!\*" "!BUILD_DIR!\" /E /I /Q /Y >nul
+
+if not exist "!ERROR_DIR!" mkdir "!ERROR_DIR!"
+
+call :RunLatex "!BUILD_DIR!" "!FILE!" "!NAME!" "!ERROR_DIR!" "!PROJECT!\!FILE!"
+if errorlevel 1 goto :eof
+
+copy /y "!BUILD_DIR!\!NAME!.pdf" "output\!PROJECT!\!NAME!.pdf" >nul
+if exist "!ERROR_DIR!\!NAME!-errors.txt" del /q "!ERROR_DIR!\!NAME!-errors.txt"
+
+REM remove the failed dir
+dir /b "!ERROR_DIR!" >nul 2>&1
+if errorlevel 1 rmdir "!ERROR_DIR!" >nul 2>&1
+
+echo.
+echo [SUCCESS] !FILE!
+echo.
+goto :eof
+
+
+REM run latexmk to ensure pdf is good
+:RunLatex
+
+set "RUN_BUILD=%~1"
+set "RUN_FILE=%~2"
+set "RUN_NAME=%~3"
+set "RUN_ERROR_DIR=%~4"
+set "RUN_DISPLAY=%~5"
+
+if not exist "!RUN_ERROR_DIR!" mkdir "!RUN_ERROR_DIR!"
+
+docker run --rm ^
+    -v "%~dp0!RUN_BUILD!:/work" ^
+    -w /work ^
+    %IMAGE% ^
+    latexmk -pdf -shell-escape "!RUN_FILE!"
+
+if errorlevel 1 (
+    echo.
+    echo [FAILED] !RUN_DISPLAY!
+    call :CreateErrorLog "!RUN_BUILD!" "!RUN_NAME!" "!RUN_ERROR_DIR!" "!RUN_DISPLAY!"
+    echo.
+    echo Error report:
+    echo   !RUN_ERROR_DIR!\!RUN_NAME!-errors.txt
+    echo.
+    echo Full build files:
+    echo   !RUN_BUILD!
+    echo.
+    exit /b 1
+)
+
+if not exist "!RUN_BUILD!\!RUN_NAME!.pdf" (
+    echo.
+    echo [FAILED] !RUN_DISPLAY! - expected PDF was not created.
+    call :CreateErrorLog "!RUN_BUILD!" "!RUN_NAME!" "!RUN_ERROR_DIR!" "!RUN_DISPLAY!"
+    echo.
+    echo Error report:
+    echo   !RUN_ERROR_DIR!\!RUN_NAME!-errors.txt
+    echo.
+    exit /b 1
+)
+
+exit /b 0
+
+
+REM error report
 :CreateErrorLog
 
-set "BUILD_NAME=%~1"
-set "LOG_NAME=%~2"
+set "ERR_BUILD=%~1"
+set "ERR_NAME=%~2"
+set "ERR_DIR=%~3"
+set "ERR_DISPLAY=%~4"
+set "LOGFILE=!ERR_BUILD!\!ERR_NAME!.log"
+set "ERRORFILE=!ERR_DIR!\!ERR_NAME!-errors.txt"
 
-set "LOGFILE=build\!BUILD_NAME!\!LOG_NAME!.log"
-set "ERRORFILE=failed\!BUILD_NAME!-errors.txt"
+if not exist "!ERR_DIR!" mkdir "!ERR_DIR!"
 
-REM Create report header.
 (
     echo TeXLiveDocker Compiler - Error Report
-    echo =================================
+    echo =====================================
     echo.
-    echo Project: !BUILD_NAME!
+    echo Document: !ERR_DISPLAY!
     echo Status: FAILED
     echo.
     echo ERRORS
@@ -382,55 +269,31 @@ REM Create report header.
     echo.
 ) > "!ERRORFILE!"
 
-REM ------------------------------------------------------------
-REM Extract errors from LaTeX log
-REM ------------------------------------------------------------
-
 if exist "!LOGFILE!" (
-
-    REM Actual TeX errors normally begin with !
-    findstr /N /B /C:"!" "!LOGFILE!" >> "!ERRORFILE!"
-
+    findstr /N /B /C:"!" "!LOGFILE!" >> "!ERRORFILE!" 2>nul
     echo. >> "!ERRORFILE!"
     echo SOURCE LINES >> "!ERRORFILE!"
     echo ------------ >> "!ERRORFILE!"
     echo. >> "!ERRORFILE!"
-
-    REM Extract lines such as:
-    REM l.42 \someBrokenCommand
-    findstr /N /R /C:"^l\.[0-9][0-9]*" "!LOGFILE!" >> "!ERRORFILE!"
-
+    findstr /N /R /C:"^l\.[0-9][0-9]*" "!LOGFILE!" >> "!ERRORFILE!" 2>nul
 ) else (
-
     echo No LaTeX log file was generated. >> "!ERRORFILE!"
     echo. >> "!ERRORFILE!"
     echo The failure may have occurred before LaTeX >> "!ERRORFILE!"
     echo was able to create a log file. >> "!ERRORFILE!"
-
 )
-
-REM ------------------------------------------------------------
-REM Footer
-REM ------------------------------------------------------------
 
 echo. >> "!ERRORFILE!"
 echo --------------------------------- >> "!ERRORFILE!"
 echo Full log: !LOGFILE! >> "!ERRORFILE!"
-
 goto :eof
 
 
-REM ============================================================
-REM Finished
-REM ============================================================
-
 :Finished
-
 echo.
 echo ========================================
 echo              Finished
 echo ========================================
 echo.
 pause
-
 endlocal

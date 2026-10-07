@@ -1,18 +1,18 @@
-# Generated compiler directories
+# generated dirs from the compiler
 build/*
 output/*
 failed/*
 
-# Keep empty directories in Git
+# keep any of the empty dirs in the repo
 !build/.gitkeep
 !output/.gitkeep
 !failed/.gitkeep
 
-# User input
+# use input
 input/*
 !input/.gitkeep
 
-# LaTeX junk
+# LaTeX junk that you probably dont need
 *.aux
 *.log
 *.out
@@ -23,10 +23,10 @@ input/*
 *.lof
 *.lot
 
-# Gnuplot generated files
+# gnu plot files
 *.gnuplot
 *.table
 
-# OS junk
+# smh mac
 .DS_Store
 Thumbs.db
