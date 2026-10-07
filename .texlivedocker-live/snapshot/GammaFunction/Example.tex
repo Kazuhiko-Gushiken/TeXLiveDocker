@@ -1,0 +1,132 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm, mismath, ulem, gensymb, mathtools, nccmath, hyperref, tikz, pgfplots}
+\usepackage{gnuplottex}
+\usepackage{lipsum}
+\usepackage{xcolor}
+\usepackage{etoolbox}
+\usepackage{hyperref}
+\usepgfplotslibrary{fillbetween}
+\pgfplotsset{compat=1.18}
+
+\definecolor{desgreen}{HTML}{348443}
+\DeclareMathOperator{\erfc}{\mathrm{erfc}}
+
+\newcommand{\dx}{\,\mathrm{d}x}
+\newcommand{\dt}{\,\mathrm{d}t}
+\newcommand{\ddx}{\,\frac{\mathrm{d}}{\mathrm{d}x}}
+\newcommand{\dydx}{\, \frac{\mathrm{d}y}{\mathrm{d}x}}
+\newcommand{\du}{\, \mathrm{d}u}
+\newcommand{\dv}{\, \mathrm{d}v}
+\newcommand{\dw}{\, \mathrm{d}w}
+\newcommand{\dy}{\, \mathrm{d}y}
+\newcommand{\dr}{\, \mathrm{d}r}
+\newcommand{\dtheta}{\, \mathrm{d}\theta}
+
+\let\oldint\int
+\renewcommand{\int}{\oldint\limits}
+
+\delimiterfactor 1200
+
+
+
+
+\newcounter{problem}
+\newcommand{\problem}[1]{
+	\refstepcounter{problem}
+	\noindent\textbf{\theproblem}\quad #1
+}
+
+\newtoggle{solutions}
+\togglefalse{solutions}
+
+\newtoggle{studentpagebreaks}
+\newtoggle{studentvspace}
+
+\newtoggle{instructorpagebreaks}
+\newtoggle{instructorvspace}
+
+\iftoggle{solutions}{
+	\togglefalse{studentpagebreaks}
+	\togglefalse{studentvspace}
+	\toggletrue{instructorpagebreaks}
+	\toggletrue{instructorvspace}
+}{
+	\toggletrue{studentpagebreaks}
+	\toggletrue{studentvspace}
+	\togglefalse{instructorpagebreaks}
+	\togglefalse{instructorvspace}
+}
+
+\newcommand{\spb}{
+	\iftoggle{studentpagebreaks}{\newpage}{}
+}
+\newcommand{\svs}{
+	\iftoggle{studentvspace}{\vspace*{0.5\textheight}}{}
+}
+\newcommand{\ipb}{
+	\iftoggle{instructorpagebreaks}{\newpage}{}
+}
+
+\title{Example}
+\author{By Kazuhiko Gushiken}
+\date{\today}
+
+\hypersetup{
+	pdftitle={Example - Kazuhiko Gushiken},
+	pdfauthor={Kazuhiko Gushiken},
+	pdfsubject={Example Tex},
+	pdfkeywords={example, latex}
+}
+
+\begin{document}
+	\maketitle
+	
+	{\centering
+		What is the Gamma Function? \\
+		[12pt]
+		The Gamma Function is defined as: 
+		\begin{equation}
+			\Gamma(z) = \int_{u=0}^{\infty} u^{z-1} e^{-u} \dt
+		\end{equation}
+		\text{Graph of }$\Gamma(z)$:\par
+	}
+	\vspace{-10pt}
+	\begin{figure}[!hbtp]
+		\centering
+		\begin{tikzpicture}
+			\begin{axis}[
+				axis lines = center,
+				xmin = -5,
+				xmax = 5,
+				ymin = -10,
+				ymax = 10,
+				minor tick num=4,
+				minor tick style={draw=none},
+				grid = both,
+				width = \textwidth,
+				height = 0.5\textwidth,
+				axis line style={draw=black, thick},
+				major tick length=5pt,
+				ticklabel style={font=\bfseries},
+				tick style={thick},
+				xlabel = {$x$},
+				ylabel = {$y$},
+				unbounded coords=jump,
+				clip=true,
+				]
+				\addplot[very thin, dashed, desgreen] coordinates {(0, 10) (0, -10)};
+				\addplot[very thin, dashed, desgreen] coordinates {(-1, 10) (-1, -10)};
+				\addplot[very thin, dashed, desgreen] coordinates {(-2, 10) (-2, -10)};
+				\addplot[very thin, dashed, desgreen] coordinates {(-3, 10) (-3, -10)};
+				\addplot[very thin, dashed, desgreen] coordinates {(-4, 10) (-4, -10)};
+				\addplot[line width=1.2pt, red, samples=1600] gnuplot {
+					(x < 0.2 && abs(sin(pi*x)) < 0.02) ? NaN : gamma(x)
+					};
+			\end{axis}
+		\end{tikzpicture}
+		\caption{Graph of the Gamma Function $\Gamma(z)$. It's funky huh? I know. what im trying to get this to work... its not being too nice COMON PLEASEE and now... update?}
+
+	\end{figure}
+
+\end{document}
