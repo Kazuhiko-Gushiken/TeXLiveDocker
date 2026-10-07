@@ -2,6 +2,7 @@
 build/*
 output/*
 failed/*
+.texlivedocker-live/
 
 # keep any of the empty dirs in the repo
 !build/.gitkeep
